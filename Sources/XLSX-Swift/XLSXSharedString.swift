@@ -7,6 +7,10 @@
 
 import Foundation
 
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
+
 final class XLSXSharedString : NSObject, XMLParserDelegate
 {
     public var sharedStrings: [String] = []

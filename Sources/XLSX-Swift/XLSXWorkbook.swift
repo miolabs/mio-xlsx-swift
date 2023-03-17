@@ -8,6 +8,10 @@
 import Foundation
 import ZIPFoundation
 
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
+
 public final class Workbook : NSObject, XMLParserDelegate
 {
     public var sheets: [Sheet] = []
