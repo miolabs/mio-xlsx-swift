@@ -27,14 +27,14 @@ final class XLSXData
         
         guard let entry = archive?[ filePath ] else { return nil }
         
-        let progress = Progress()
+        let progress = Progress( totalUnitCount: 1)
         var d = Data()
         
         let semp = DispatchSemaphore(value: 0)
         
         xlsx_queue.async {
             do {
-                _ = try self.archive?.extract( entry, progress: progress, consumer: { data in
+                _ = try self.archive?.extract( entry, progress: nil, consumer: { data in
                     d.append( data )
                 } )
             }
