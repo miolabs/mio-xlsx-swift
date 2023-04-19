@@ -34,7 +34,7 @@ final class XLSXData
         
         xlsx_queue.async {
             do {
-                _ = try self.archive?.extract( entry, progress: nil, consumer: { data in
+                _ = try self.archive?.extract( entry, progress: progress, consumer: { data in
                     d.append( data )
                 } )
             }

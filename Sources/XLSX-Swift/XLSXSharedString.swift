@@ -41,25 +41,34 @@ final class XLSXSharedString : NSObject, XMLParserDelegate
     }
              
     var current_str:String? = nil
+    var append_str = false
     
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
         
-        if elementName == "t" {
-            current_str = ""
+        switch elementName {
+            
+        case "si": current_str = ""
+        case "t": append_str = true
+        
+        default:break
         }
     }
     
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if current_str != nil {
+        if current_str != nil && append_str == true {
             current_str! += string
         }
     }
     
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-        if elementName == "t" {            
-            
+        switch elementName {
+        
+        case "t": append_str = false
+        case "si":
             sharedStrings.append( current_str! )
             current_str = nil
+        
+        default: break
         }
     }
     
