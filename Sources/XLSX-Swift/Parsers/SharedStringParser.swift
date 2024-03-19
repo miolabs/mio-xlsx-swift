@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  SharedStringParser.swift
 //  
 //
 //  Created by Javier Segura Perez on 1/3/23.
@@ -11,33 +11,24 @@ import Foundation
 import FoundationXML
 #endif
 
-final class XLSXSharedString : NSObject, XMLParserDelegate
+final class SharedStringParser : NSObject, XMLParserDelegate
 {
-    public var sharedStrings: [String] = []
-    
-    var data:XLSXData?
-    
-    public init( data: XLSXData ) {
-        self.data = data
-        super.init()
+    let file:WorkbookFile
+    var strings: [String] = []
+
+    init( file: WorkbookFile ) {
+        self.file = file
     }
     
-    deinit {
-        print( "NOOO ")
-    }
-        
-    func parse( ) throws {
-        
-        guard let d = try data!.fileByPath(path: "xl/sharedStrings.xml" ) else { return }
-        
-        parse_strings( data: d )
-    }
-    
-    var parser : XMLParser?
-    func parse_strings( data:Data ) {
-        parser = XMLParser( data: data )
-        parser?.delegate = self
-        parser?.parse()
+    func parse( ) throws -> [String] {
+        guard let d = try file.read( path: "xl/sharedStrings.xml" ) else {
+            throw XLSXError.workbookFileNotFound( file: "xl/sharedStrings.xml" )
+        }
+
+        let parser = XMLParser( data: d )
+        parser.delegate = self
+        parser.parse()
+        return strings
     }
              
     var current_str:String? = nil
@@ -65,7 +56,7 @@ final class XLSXSharedString : NSObject, XMLParserDelegate
         
         case "t": append_str = false
         case "si":
-            sharedStrings.append( current_str! )
+            strings.append( current_str! )
             current_str = nil
         
         default: break
@@ -75,13 +66,12 @@ final class XLSXSharedString : NSObject, XMLParserDelegate
     func parserDidEndDocument(_ parser: XMLParser) {
         // Decoder sheet file
         print("SHARED STRING END")
-        
     }
     
-    
-    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
+    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error ) {
         print( parseError )
         
         
     }
 }
+
