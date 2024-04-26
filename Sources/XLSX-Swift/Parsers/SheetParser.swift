@@ -7,6 +7,10 @@
 
 import Foundation
 
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
+
 class SheetParser : NSObject, XMLParserDelegate
 {
     let file:WorkbookFile
