@@ -36,10 +36,11 @@ public final class Workbook : NSObject
     
     public func addWorksheet( withName name:String? = nil ) -> Sheet
     {
-        let n = name ?? "sheet\(sheet_info.count + 1)"
-        let sh = Sheet( id: "\(sheet_info.count + 1)", name: n )
+        let id = "\(sheets.count + 1)"
+        let n = name ?? "sheet\(sheets.count + 1)"
+        let sh = Sheet( id: id, name: n )
         sheets.append( sh )
-        sheet_info[ "\(sheet_info.count)" ] = n
+        sheet_info[ id ] = n
         return sh
     }
     

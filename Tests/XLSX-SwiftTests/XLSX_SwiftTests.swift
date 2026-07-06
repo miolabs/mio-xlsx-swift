@@ -119,13 +119,58 @@ final class XLSX_SwiftTests: XCTestCase {
     }
     
     func testCreateWorkbook() throws {
-        
+
         let wb = Workbook( )
         let sh = wb.addWorksheet()
-        
+
         sh.write( value: "TEST", row: 1, col: 1 )
-                        
+        sh.write( value: 42, row: 2, col: 0 )
+        sh.write( value: 3.14, row: 2, col: 1 )
+
+        let sh2 = wb.addWorksheet( withName: "Second" )
+        sh2.write( value: "Another sheet", row: 0, col: 0 )
+
         try wb.save( toFileURL: bundleURL().appendingPathComponent("output.xlsx" ) )
+    }
+
+    func testWriteReadRoundTrip() throws {
+
+        let wb = Workbook( )
+        let sh = wb.addWorksheet( withName: "My Sheet" )
+
+        sh.write( value: "TEST", row: 1, col: 1 )
+        sh.write( value: "Hello", row: 0, col: 0 )
+        sh.write( value: 42, row: 2, col: 2 )
+        sh.write( value: 3.14, row: 3, col: 0 )
+
+        let data = try wb.save()
+        XCTAssertNotNil( data )
+
+        let wb2 = try Workbook( data: data! )
+        let sh2 = wb2.sheets.first
+        XCTAssertNotNil( sh2 )
+        XCTAssert( sh2!.name == "My Sheet" )
+
+        XCTAssert( sh2![ "A1" ] as? String == "Hello" )
+        XCTAssert( sh2![ "B2" ] as? String == "TEST" )
+        XCTAssert( sh2![ "C3" ] as? String == "42" )
+        XCTAssert( sh2![ "A4" ] as? String == "3.14" )
+    }
+
+    func testColumnReferences() throws {
+        XCTAssert( Cell.reference( byColumnIndex: 0 ) == "A" )
+        XCTAssert( Cell.reference( byColumnIndex: 25 ) == "Z" )
+        XCTAssert( Cell.reference( byColumnIndex: 26 ) == "AA" )
+        XCTAssert( Cell.reference( byColumnIndex: 27 ) == "AB" )
+        XCTAssert( Cell.reference( byColumnIndex: 51 ) == "AZ" )
+        XCTAssert( Cell.reference( byColumnIndex: 52 ) == "BA" )
+        XCTAssert( Cell.reference( byColumnIndex: 701 ) == "ZZ" )
+        XCTAssert( Cell.reference( byColumnIndex: 702 ) == "AAA" )
+
+        for i in [ 0, 25, 26, 27, 51, 52, 701, 702 ] {
+            let index = UInt16( i )
+            XCTAssert( Cell.index( byColumnReference: Cell.reference( byColumnIndex: index ) ) == index )
+        }
     }
 
 }

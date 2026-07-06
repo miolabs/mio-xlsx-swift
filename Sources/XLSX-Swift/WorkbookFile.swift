@@ -44,7 +44,7 @@ class WorkbookFile
     }
     
     func write( wb:Workbook ) throws {
-        try add_content_types()
+        try add_content_types( wb: wb )
         try add_rels( wb: wb )
         try add_workbook( wb:wb )
         try add_workbook_rels( wb: wb )
@@ -66,20 +66,24 @@ class WorkbookFile
 extension WorkbookFile
 {
     func add_data( path:String, data:Data ) throws {
-        try archive?.addEntry(with: path, type: .file, uncompressedSize: UInt32(data.count), compressionMethod: .deflate, provider: { position, size in
-            return data
+        try archive?.addEntry(with: path, type: .file, uncompressedSize: Int64(data.count), compressionMethod: .deflate, provider: { (position:Int64, size:Int) in
+            let start = Int( position )
+            return data.subdata( in: start..<(start + size) )
         } )
     }
-    
-    func add_content_types() throws {
+
+    func add_content_types( wb:Workbook ) throws {
         let xml = document {
             node( "Types", attributes: [("xmlns", "http://schemas.openxmlformats.org/package/2006/content-types")] ) {
                 node( "Default", attributes: [ ("Extension", "rels"), ("ContentType", "application/vnd.openxmlformats-package.relationships+xml") ] ) {}
-                node( "Override", attributes: [ ("PartName", "/workbook.xml"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml") ] ) {}
-                node( "Override", attributes: [ ("PartName", "/sheet1.xml"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml") ] ) {}
+                node( "Default", attributes: [ ("Extension", "xml"), ("ContentType", "application/xml") ] ) {}
+                node( "Override", attributes: [ ("PartName", "/xl/workbook.xml"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml") ] ) {}
+                for sh in wb.sheets {
+                    node( "Override", attributes: [ ("PartName", "/xl/worksheets/sheet\(sh.id).xml"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml") ] ) {}
+                }
             }
         }
-        
+
         try add_data( path: "[Content_Types].xml", data: xml.string.data(using: .utf8)! )
     }
 
@@ -113,12 +117,12 @@ extension WorkbookFile
                 node( "Relationship", attributes: [
                         ("Id", "rId1"),
                         ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"),
-                        ("Target", "workbook.xml")
+                        ("Target", "xl/workbook.xml")
                 ] ) {}
             }
         }
-        
-        try add_data( path: "/_rels/.rels", data: xml.string.data(using: .utf8)! )
+
+        try add_data( path: "_rels/.rels", data: xml.string.data(using: .utf8)! )
     }
         
     func add_workbook( wb:Workbook ) throws {
@@ -136,7 +140,7 @@ extension WorkbookFile
             }
         }
         
-        try add_data( path: "/workbook.xml", data: xml.string.data(using: .utf8)! )
+        try add_data( path: "xl/workbook.xml", data: xml.string.data(using: .utf8)! )
     }
     
     
@@ -147,13 +151,13 @@ extension WorkbookFile
                     node( "Relationship", attributes: [
                                             ("Id", "rId\(sh.id)"),
                                             ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
-                                            ("Target", "sheet\(sh.id).xml"),
+                                            ("Target", "worksheets/sheet\(sh.id).xml"),
                     ] ) {}
                 }
             }
         }
-        
-        try add_data( path: "/_rels/workbook.xml.rels", data: xml.string.data(using: .utf8)! )
+
+        try add_data( path: "xl/_rels/workbook.xml.rels", data: xml.string.data(using: .utf8)! )
     }
     
 //    func add_shared_strings_xml() throws {
@@ -196,12 +200,21 @@ extension WorkbookFile
 //        try add_data( path: "/xl/theme/theme1.xml", data: xml.string.data(using: .utf8)! )
 //    }
     
+    func is_numeric_value( _ v:Any ) -> Bool {
+        switch v {
+        case is Int, is Int8, is Int16, is Int32, is Int64,
+             is UInt, is UInt8, is UInt16, is UInt32, is UInt64,
+             is Float, is Double, is Decimal: return true
+        default: return false
+        }
+    }
+
     func add_sheet_xml( sheet:Sheet ) throws {
-                
+
         let xml = document {
             node( "worksheet", attributes: [
-                ("xmlns", "http://schemas.openxmlformats.org/officeDocument/2006/relationships" ),
-                ("xmlns:r", "http://schemas.openxmlformats.org/spreadsheetml/2006/main" )
+                ("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main" ),
+                ("xmlns:r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships" )
             ] ) {
 //                node( "dimension", attributes: [("ref", sheet.dimension)] ) {}
 //                node( "sheetFormatPr", attributes: [
@@ -228,25 +241,34 @@ extension WorkbookFile
 //                    ] ) {}
 //                }
                 node( "sheetData" ) {
-                    let max_cell_index = sheet.maxCellIndex
                     for r in sheet.rows {
-                        node( "row", attributes: [ 
-                                        ( "r", "\(r.rowIndex + 1)" ),
-                                        ( "ht","27.65" ),
-                                        ( "customHeight", "1" ) ] ) {
-                            for c in r.cellsNormalized( count: max_cell_index ) {
+                        node( "row", attributes: [ ( "r", "\(r.rowIndex + 1)" ) ] ) {
+                            for c in r.cells {
                                 if let v = c.value as? String {
-                                    node( "c", attributes: [ 
+                                    node( "c", attributes: [
                                                 ( "r", c.reference ),
-                                                ( "t", c.type.rawValue ),
-                                                ( "s", c.styleIndex) ] ) {
-                                        node( "v", value: v )
+                                                ( "t", Cell.ValueType.inlineString.rawValue ) ] ) {
+                                        node( "is" ) { node( "t", value: v ) }
                                     }
                                 }
-                                else {
-                                    node( "c", attributes: [ 
+                                else if let v = c.value as? Bool {
+                                    node( "c", attributes: [
                                                 ( "r", c.reference ),
-                                                ( "s", c.styleIndex ) ] ){ }
+                                                ( "t", Cell.ValueType.boolean.rawValue ) ] ) {
+                                        node( "v", value: v ? "1" : "0" )
+                                    }
+                                }
+                                else if let v = c.value, is_numeric_value( v ) {
+                                    node( "c", attributes: [ ( "r", c.reference ) ] ) {
+                                        node( "v", value: "\(v)" )
+                                    }
+                                }
+                                else if let v = c.value {
+                                    node( "c", attributes: [
+                                                ( "r", c.reference ),
+                                                ( "t", Cell.ValueType.inlineString.rawValue ) ] ) {
+                                        node( "is" ) { node( "t", value: "\(v)" ) }
+                                    }
                                 }
                             }
                         }
@@ -255,6 +277,6 @@ extension WorkbookFile
             }
         }
 
-        try add_data( path: "/sheet\(sheet.id).xml", data: xml.string.data(using: .utf8)! )
+        try add_data( path: "xl/worksheets/sheet\(sheet.id).xml", data: xml.string.data(using: .utf8)! )
     }
 }

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import MIOCore
 
 public class Cell
 {
@@ -38,7 +37,7 @@ public class Cell
             
     init( reference: String, styleIndex: String, type: ValueType, value: Any? = nil ) {
         self.col = Cell.index( byColumnReference: reference )
-        self.row = MIOCoreUInt32Value( reference.trimmingCharacters( in: .letters ) )!
+        self.row = UInt32( reference.trimmingCharacters( in: .letters ) )!
         self.reference = reference
         self.styleIndex = styleIndex
         self.type = type
@@ -49,48 +48,35 @@ public class Cell
         self.row = row
         self.col = column
         self.reference = "\(Cell.reference(byColumnIndex: column))\(row + 1)"
-        self.styleIndex = Attributes.styleIndex.rawValue
+        self.styleIndex = "0"
         self.type = type
         self.value = value
     }
     
     static let reference_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     static func reference( byColumnIndex colIndex:UInt16 ) -> String {
-        let letters_count:UInt16 = MCUInt16Value( reference_letters.count )!
-                
-        if colIndex < letters_count {
-            let index = reference_letters.index( reference_letters.startIndex, offsetBy: Int( colIndex ) )
-            return String( reference_letters[ index ] )
+        // Excel column references are bijective base-26: A..Z, AA..AZ, BA..ZZ, AAA...
+        var n = Int( colIndex ) + 1
+        var colRef = ""
+        while n > 0 {
+            let m = ( n - 1 ) % 26
+            let index = reference_letters.index( reference_letters.startIndex, offsetBy: m )
+            colRef = String( reference_letters[ index ] ) + colRef
+            n = ( n - 1 ) / 26
         }
-
-        let times = (colIndex / letters_count) | 0
-        let m = colIndex % letters_count
-
-        var colRef:String = ""
-        for _ in [0..<times] { colRef += "A" }
-
-        let index = reference_letters.index( reference_letters.startIndex, offsetBy: Int( m ) )
-        colRef += String( reference_letters[ index ] )
         return colRef
     }
 
     static func index( byColumnReference reference:String ) -> UInt16
     {
-        let letters_count:UInt16 = MCUInt16Value( reference_letters.count )!
-        
         let ref = reference.trimmingCharacters( in: .decimalDigits )
-        if ref.count == 1 {
-            let range: Range<String.Index> = reference_letters.range(of: ref)!
+        var n = 0
+        for l in ref {
+            let range: Range<String.Index> = reference_letters.range( of: String( l ) )!
             let index: Int = reference_letters.distance( from: reference_letters.startIndex, to: range.lowerBound )
-            return MCUInt16Value( index )!
+            n = n * 26 + index + 1
         }
-        
-        let l = String( ref[ ref.index(before: ref.endIndex) ] )
-        let range: Range<String.Index> = reference_letters.range(of: l)!
-        let index: Int = reference_letters.distance( from: reference_letters.startIndex, to: range.lowerBound )
-                
-        let m = ( MCUInt16Value( ref.count - 1 )! ) * letters_count
-        return m + MCUInt16Value( index )!
+        return UInt16( n - 1 )
     }
     
 }

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import MIOCore
 
 public class Row
 {
@@ -26,11 +25,11 @@ public class Row
     }
     
     func cell( index: UInt16 ) -> Cell {
-        
-        if index > cells.count - 1 {
-            for i in 0...index { cells.append( Cell( row: rowIndex, column: i ) ) }
+
+        if Int( index ) >= cells.count {
+            for i in cells.count...Int( index ) { cells.append( Cell( row: rowIndex, column: UInt16( i ) ) ) }
         }
-                
+
         return cells[ Int( index ) ]
     }
     

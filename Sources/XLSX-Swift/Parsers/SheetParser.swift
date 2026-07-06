@@ -41,7 +41,8 @@ class SheetParser : NSObject, XMLParserDelegate
     var current_row: Row?
     var current_cell:Cell?
     var current_cell_value:String?
-    
+    var current_is_inline: Bool = false
+        
     public func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
         
         if elementName == "row" {
@@ -61,6 +62,11 @@ class SheetParser : NSObject, XMLParserDelegate
             current_cell = Cell( reference: r, styleIndex: s ?? "", type: t ?? Cell.ValueType.number )
         }
         else if elementName == "v" { current_cell_value = "" }
+        else if elementName == "is" { current_is_inline = true }
+        // Capture <t> only when inside <is>
+        else if elementName == "t" && current_is_inline {
+               current_cell_value = ""
+        }
     }
     
     public func parser( _ parser: XMLParser, foundCharacters string: String ) {
@@ -75,13 +81,23 @@ class SheetParser : NSObject, XMLParserDelegate
                 let index = Int( current_cell_value!.trimmingCharacters(in: .whitespacesAndNewlines ) )!
                 current_cell!.value = shared_strings[ index ]
                 
-            case .inlineString: current_cell!.value = current_cell_value!
+            case .inlineString:
+                current_cell!.value = current_cell_value!
             case .number: current_cell!.value = current_cell_value!
             case .formula: current_cell!.value = current_cell_value!
-            default: break
+            default:
+                print("Not supported")
             }
                                     
             current_cell_value = nil
+        }
+        else if elementName == "t" && current_is_inline {
+            current_cell!.value = current_cell_value ?? ""
+            current_cell_value = nil
+        }
+        // Exit inline string mode
+        else if elementName == "is" {
+            current_is_inline = false
         }
         else if elementName == "c" {
             current_row?.append( current_cell! )

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import MIOCore
 
 #if canImport(FoundationXML)
 import FoundationXML
@@ -24,7 +23,7 @@ public final class Sheet : NSObject
     }
     
     public subscript( reference:String ) -> Any? {
-        let row = MIOCoreUInt32Value( reference.trimmingCharacters( in: .letters ), 0 )!
+        let row = UInt32( reference.trimmingCharacters( in: .letters ) ) ?? 0
         
         let r = get_row( row - 1)
         let c = r.cell( byColumnRef: reference )
@@ -41,12 +40,12 @@ public final class Sheet : NSObject
         
     func get_row( _ index:UInt32 ) -> Row
     {
-        if index > rows.count - 1 {
-            // Fill with rows
-            for i in 0...index { rows.append( Row( rowIndex: i ) ) }
+        if Int( index ) >= rows.count {
+            // Fill with the missing rows
+            for i in rows.count...Int( index ) { rows.append( Row( rowIndex: UInt32( i ) ) ) }
         }
-                
-        return rows[ MIOCoreIntValue( index )! ]
+
+        return rows[ Int( index ) ]
     }
     
     var dimension:String {
@@ -58,7 +57,7 @@ public final class Sheet : NSObject
         var max:UInt16 = 0
         for r in rows {
             if r.cells.count > max {
-                max = MCUInt16Value( r.cells.count )!
+                max = UInt16( r.cells.count )
             }
         }
         return max

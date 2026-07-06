@@ -21,8 +21,9 @@ final class SharedStringParser : NSObject, XMLParserDelegate
     }
     
     func parse( ) throws -> [String] {
+        // sharedStrings.xml is optional. Workbooks that only use inline strings don't have it
         guard let d = try file.read( path: "xl/sharedStrings.xml" ) else {
-            throw XLSXError.workbookFileNotFound( file: "xl/sharedStrings.xml" )
+            return []
         }
 
         let parser = XMLParser( data: d )
