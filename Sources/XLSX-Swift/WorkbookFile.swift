@@ -9,6 +9,9 @@ var wb_file_queue = DispatchQueue( label: "wb_file_queue" )
 class WorkbookFile
 {
     var archive:Archive?
+    /// Number formats used by the workbook's cells, in first-use order:
+    /// format i is cell style i + 1 (style 0 is the default)
+    var formats:[ CellFormat ] = []
     
     public init( ) {
         archive = Archive( accessMode: .create )
@@ -44,6 +47,7 @@ class WorkbookFile
     }
     
     func write( wb:Workbook ) throws {
+        formats = cell_formats( wb: wb )
         try add_content_types( wb: wb )
         try add_rels( wb: wb )
         try add_workbook( wb:wb )
@@ -51,7 +55,7 @@ class WorkbookFile
 //        try add_app_xml()
 //        try add_core_xml()
 //        try add_shared_strings_xml()
-//        try add_styles_xml()
+        try add_styles_xml()
 //        try add_theme_xml()
         for sh in wb.sheets {
             try add_sheet_xml( sheet: sh )
@@ -78,6 +82,7 @@ extension WorkbookFile
                 node( "Default", attributes: [ ("Extension", "rels"), ("ContentType", "application/vnd.openxmlformats-package.relationships+xml") ] ) {}
                 node( "Default", attributes: [ ("Extension", "xml"), ("ContentType", "application/xml") ] ) {}
                 node( "Override", attributes: [ ("PartName", "/xl/workbook.xml"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml") ] ) {}
+                node( "Override", attributes: [ ("PartName", "/xl/styles.xml"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml") ] ) {}
                 for sh in wb.sheets {
                     node( "Override", attributes: [ ("PartName", "/xl/worksheets/sheet\(sh.id).xml"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml") ] ) {}
                 }
@@ -154,6 +159,11 @@ extension WorkbookFile
                                             ("Target", "worksheets/sheet\(sh.id).xml"),
                     ] ) {}
                 }
+                node( "Relationship", attributes: [
+                                        ("Id", "rIdStyles"),
+                                        ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"),
+                                        ("Target", "styles.xml"),
+                ] ) {}
             }
         }
 
@@ -176,15 +186,95 @@ extension WorkbookFile
 //        try add_data( path: "xl/sharedStrings.xml", data: xml.string.data(using: .utf8)! )
 //    }
 //    
-//    func add_styles_xml() throws {
-//        let xml = document {
-//            node( "styleSheet", attributes: [
-//                            ("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")
-//                        ] ) { }
-//        }
-//                
-//        try add_data( path: "/xl/styles.xml", data: xml.string.data(using: .utf8)! )
-//    }
+    /// Minimal stylesheet: the default style plus one style per number
+    /// format the cells use (custom format ids start at 164)
+    func add_styles_xml() throws {
+        let xml = document {
+            node( "styleSheet", attributes: [
+                            ("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")
+                        ] ) {
+                if !formats.isEmpty {
+                    node( "numFmts", attributes: [ ("count", "\(formats.count)") ] ) {
+                        for (i, f) in formats.enumerated() {
+                            node( "numFmt", attributes: [ ("numFmtId", "\(164 + i)"), ("formatCode", f.code) ] ) {}
+                        }
+                    }
+                }
+                node( "fonts", attributes: [ ("count", "1") ] ) {
+                    node( "font" ) {
+                        node( "sz", attributes: [ ("val", "11") ] ) {}
+                        node( "name", attributes: [ ("val", "Calibri") ] ) {}
+                    }
+                }
+                node( "fills", attributes: [ ("count", "2") ] ) {
+                    node( "fill" ) { node( "patternFill", attributes: [ ("patternType", "none") ] ) {} }
+                    node( "fill" ) { node( "patternFill", attributes: [ ("patternType", "gray125") ] ) {} }
+                }
+                node( "borders", attributes: [ ("count", "1") ] ) {
+                    node( "border" ) {
+                        node( "left" ) {}
+                        node( "right" ) {}
+                        node( "top" ) {}
+                        node( "bottom" ) {}
+                        node( "diagonal" ) {}
+                    }
+                }
+                node( "cellStyleXfs", attributes: [ ("count", "1") ] ) {
+                    node( "xf", attributes: [ ("numFmtId", "0"), ("fontId", "0"), ("fillId", "0"), ("borderId", "0") ] ) {}
+                }
+                node( "cellXfs", attributes: [ ("count", "\(formats.count + 1)") ] ) {
+                    node( "xf", attributes: [ ("numFmtId", "0"), ("fontId", "0"), ("fillId", "0"), ("borderId", "0"), ("xfId", "0") ] ) {}
+                    for i in formats.indices {
+                        node( "xf", attributes: [ ("numFmtId", "\(164 + i)"), ("fontId", "0"), ("fillId", "0"), ("borderId", "0"), ("xfId", "0"), ("applyNumberFormat", "1") ] ) {}
+                    }
+                }
+                node( "cellStyles", attributes: [ ("count", "1") ] ) {
+                    node( "cellStyle", attributes: [ ("name", "Normal"), ("xfId", "0"), ("builtinId", "0") ] ) {}
+                }
+            }
+        }
+
+        try add_data( path: "xl/styles.xml", data: xml.string.data(using: .utf8)! )
+    }
+
+    func cell_formats( wb:Workbook ) -> [ CellFormat ] {
+        var seen = Set<CellFormat>()
+        var list:[ CellFormat ] = []
+        for sh in wb.sheets {
+            for r in sh.rows {
+                for c in r.cells {
+                    if let f = c.format, seen.insert( f ).inserted { list.append( f ) }
+                }
+            }
+        }
+        return list
+    }
+
+    /// Excel serial date (1900 date system): days since 1899-12-30 plus the
+    /// fraction of the day, from the wall-clock components alone — no time
+    /// zone is involved. nil without year, month and day.
+    static func excel_serial( _ comps:DateComponents ) -> Double? {
+        guard let year = comps.year, let month = comps.month, let day = comps.day else { return nil }
+        var utc = Calendar( identifier: .gregorian )
+        utc.timeZone = TimeZone( identifier: "UTC" )!
+        let wallClock = DateComponents( year: year, month: month, day: day,
+                                        hour: comps.hour ?? 0, minute: comps.minute ?? 0,
+                                        second: comps.second ?? 0, nanosecond: comps.nanosecond ?? 0 )
+        guard let date  = utc.date( from: wallClock ),
+              let epoch = utc.date( from: DateComponents( year: 1899, month: 12, day: 30 ) )
+        else { return nil }
+        return date.timeIntervalSince( epoch ) / 86_400
+    }
+
+    /// r, the value type and — for formatted cells — the style index
+    func cell_attributes( _ c:Cell, type:Cell.ValueType? = nil ) -> [ XMLAttribute ] {
+        var attributes:[ XMLAttribute ] = [ ( "r", c.reference ) ]
+        if let type { attributes.append( ( "t", type.rawValue ) ) }
+        if let f = c.format, let i = formats.firstIndex( of: f ) {
+            attributes.append( ( "s", "\(i + 1)" ) )
+        }
+        return attributes
+    }
 //
 //    func add_theme_xml() throws {
 //        let xml = document {
@@ -240,33 +330,45 @@ extension WorkbookFile
 //                        ("customWidth","1")
 //                    ] ) {}
 //                }
+                if !sheet.columnWidths.isEmpty {
+                    node( "cols" ) {
+                        for (col, width) in sheet.columnWidths.sorted( by: { $0.key < $1.key } ) {
+                            node( "col", attributes: [
+                                ("min", "\(col + 1)"),
+                                ("max", "\(col + 1)"),
+                                ("width", "\(width)"),
+                                ("customWidth", "1")
+                            ] ) {}
+                        }
+                    }
+                }
                 node( "sheetData" ) {
                     for r in sheet.rows {
                         node( "row", attributes: [ ( "r", "\(r.rowIndex + 1)" ) ] ) {
                             for c in r.cells {
                                 if let v = c.value as? String {
-                                    node( "c", attributes: [
-                                                ( "r", c.reference ),
-                                                ( "t", Cell.ValueType.inlineString.rawValue ) ] ) {
+                                    node( "c", attributes: cell_attributes( c, type: .inlineString ) ) {
                                         node( "is" ) { node( "t", value: v ) }
                                     }
                                 }
                                 else if let v = c.value as? Bool {
-                                    node( "c", attributes: [
-                                                ( "r", c.reference ),
-                                                ( "t", Cell.ValueType.boolean.rawValue ) ] ) {
+                                    node( "c", attributes: cell_attributes( c, type: .boolean ) ) {
                                         node( "v", value: v ? "1" : "0" )
                                     }
                                 }
+                                else if let v = c.value as? DateComponents, let serial = WorkbookFile.excel_serial( v ) {
+                                    // A date is a number; its format makes it show as one
+                                    node( "c", attributes: cell_attributes( c ) ) {
+                                        node( "v", value: "\(serial)" )
+                                    }
+                                }
                                 else if let v = c.value, is_numeric_value( v ) {
-                                    node( "c", attributes: [ ( "r", c.reference ) ] ) {
+                                    node( "c", attributes: cell_attributes( c ) ) {
                                         node( "v", value: "\(v)" )
                                     }
                                 }
                                 else if let v = c.value {
-                                    node( "c", attributes: [
-                                                ( "r", c.reference ),
-                                                ( "t", Cell.ValueType.inlineString.rawValue ) ] ) {
+                                    node( "c", attributes: cell_attributes( c, type: .inlineString ) ) {
                                         node( "is" ) { node( "t", value: "\(v)" ) }
                                     }
                                 }
