@@ -34,6 +34,8 @@ public class Cell
     public var styleIndex:String
     public var type:ValueType
     public var value:Any? = nil
+    /// Number format; nil keeps the default style
+    public var format:CellFormat? = nil
             
     init( reference: String, styleIndex: String, type: ValueType, value: Any? = nil ) {
         self.col = Cell.index( byColumnReference: reference )

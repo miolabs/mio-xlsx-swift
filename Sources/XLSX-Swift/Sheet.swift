@@ -16,6 +16,8 @@ public final class Sheet : NSObject
     public var id:String
     public var name:String
     public var rows:[ Row ] = []
+    /// Column widths in characters of the default font, by column index
+    public var columnWidths:[ UInt16: Double ] = [:]
     
     init( id:String, name: String ) {
         self.id = id
@@ -31,11 +33,18 @@ public final class Sheet : NSObject
         return c?.value
     }
     
+    /// Writes a cell. A `DateComponents` value becomes an Excel date: give
+    /// it a date format (`.date`, `.dateTime`) or it shows as a plain number.
     public func write( value: Any?, row: UInt32, col: UInt16, format: CellFormat? = nil) {
         let row = get_row( row )
         let cell = row.cell( index: col )
         
         cell.value = value
+        cell.format = format
+    }
+
+    public func setWidth( _ width: Double, forColumn col: UInt16 ) {
+        columnWidths[ col ] = width
     }
         
     func get_row( _ index:UInt32 ) -> Row

@@ -173,4 +173,50 @@ final class XLSX_SwiftTests: XCTestCase {
         }
     }
 
+    func testExcelSerialFromWallClock() throws {
+        // Excel's day numbers (1900 system): 2000-01-01 is 36526
+        XCTAssertEqual( WorkbookFile.excel_serial( DateComponents( year: 2000, month: 1, day: 1 ) ), 36526 )
+        XCTAssertEqual( WorkbookFile.excel_serial( DateComponents( year: 2026, month: 10, day: 7 ) ), 46302 )
+        // The time is the fraction of the day — taken as written, no time zone
+        XCTAssertEqual( WorkbookFile.excel_serial( DateComponents( year: 2026, month: 10, day: 7, hour: 12 ) ), 46302.5 )
+        XCTAssertEqual( WorkbookFile.excel_serial( DateComponents( year: 2026, month: 10, day: 7, hour: 18, minute: 0, second: 0 ) ), 46302.75 )
+        XCTAssertNil( WorkbookFile.excel_serial( DateComponents( hour: 12 ) ) )
+    }
+
+    func testDateCellsGetNumberFormatsAndWidths() throws {
+        let wb = Workbook()
+        let sh = wb.addWorksheet( withName: "Result" )
+        sh.write( value: "day", row: 0, col: 0 )
+        sh.write( value: "at", row: 0, col: 1 )
+        sh.write( value: DateComponents( year: 2026, month: 10, day: 7 ), row: 1, col: 0, format: .date )
+        sh.write( value: DateComponents( year: 2026, month: 10, day: 7, hour: 12 ), row: 1, col: 1, format: .dateTime )
+        sh.setWidth( 20, forColumn: 1 )
+
+        let file  = try WorkbookFile( data: try XCTUnwrap( wb.save() ) )
+        func part( _ path: String ) throws -> String {
+            String( decoding: try XCTUnwrap( file.read( path: path ), "missing \(path)" ), as: UTF8.self )
+        }
+
+        // The stylesheet holds both formats; styles 1 and 2 apply them
+        let styles = try part( "xl/styles.xml" )
+        XCTAssert( styles.contains( "formatCode=\"yyyy-mm-dd\"" ) )
+        XCTAssert( styles.contains( "formatCode=\"yyyy-mm-dd hh:mm:ss\"" ) )
+        XCTAssert( styles.contains( "<cellXfs count=\"3\">" ) )
+
+        // Date cells are numbers carrying their style; strings stay unstyled
+        let sheet = try part( "xl/worksheets/sheet1.xml" )
+        XCTAssert( sheet.contains( "s=\"1\"><v>46302.0</v>" ), sheet )
+        XCTAssert( sheet.contains( "s=\"2\"><v>46302.5</v>" ), sheet )
+        XCTAssertFalse( sheet.contains( "t=\"inlineStr\" s=" ) )
+
+        // Widths come before the data
+        let cols = try XCTUnwrap( sheet.range( of: "<col min=\"2\" max=\"2\" width=\"20.0\" customWidth=\"1\"" ), sheet )
+        let data = try XCTUnwrap( sheet.range( of: "<sheetData>" ) )
+        XCTAssert( cols.lowerBound < data.lowerBound )
+
+        // The package declares and links the stylesheet
+        XCTAssert( try part( "[Content_Types].xml" ).contains( "/xl/styles.xml" ) )
+        XCTAssert( try part( "xl/_rels/workbook.xml.rels" ).contains( "Target=\"styles.xml\"" ) )
+    }
+
 }
