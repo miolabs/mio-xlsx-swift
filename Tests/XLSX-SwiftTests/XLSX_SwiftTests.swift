@@ -3,48 +3,17 @@ import XCTest
 
 enum TestError : Error
 {
-    case invalidPath
     case readTestDataFail
 }
 
 final class XLSX_SwiftTests: XCTestCase {
     
-    func isXcodeTestEnvironment() -> Bool {
-        let arg0 = ProcessInfo.processInfo.arguments[0]
-        // Use arg0.hasSuffix("/usr/bin/xctest") for command line environment
-        return arg0.hasSuffix("/Xcode/Agents/xctest")
-    }
-    
-    func bundleURL( ) throws -> URL {
-        let testBundle = Bundle( for: type( of: self ) )
-        var resource_url: URL
-        
-        if isXcodeTestEnvironment() { // test via Xcode
-            resource_url = testBundle.bundleURL
-                .appendingPathComponent( "Contents", isDirectory: true )
-                .appendingPathComponent( "Resources", isDirectory: true )
-                .appendingPathComponent( "XLSX-Swift_XLSX-SwiftTests.bundle", isDirectory: true )
-                .appendingPathComponent( "Contents", isDirectory: true )
-                .appendingPathComponent( "Resources", isDirectory: true )
-        }
-        else {
-            guard let packagePath = ProcessInfo.processInfo.environment["PWD"] else { throw TestError.invalidPath }
-            let packageUrl = URL(fileURLWithPath: packagePath)
-            resource_url = packageUrl
-                .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("TestResources", isDirectory: true)
-        }
-        
-        return resource_url
-    }
-    
     func loadTestData() throws -> Data {
-        let resource_url = try bundleURL()
+        // test.xlsx is a resource of this target (Package.swift), so
+        // Bundle.module finds it under swift test and Xcode alike
+        guard let url = Bundle.module.url( forResource: "test", withExtension: "xlsx" ) else { throw TestError.readTestDataFail }
         
-        let data = FileManager.default.contents( atPath: resource_url.appendingPathComponent("test.xlsx").path() )
-        if data == nil { throw TestError.readTestDataFail }
-        
-        return data!
+        return try Data( contentsOf: url )
     }
     
     func testWorkbookFromData() throws {
@@ -130,7 +99,7 @@ final class XLSX_SwiftTests: XCTestCase {
         let sh2 = wb.addWorksheet( withName: "Second" )
         sh2.write( value: "Another sheet", row: 0, col: 0 )
 
-        try wb.save( toFileURL: bundleURL().appendingPathComponent("output.xlsx" ) )
+        try wb.save( toFileURL: FileManager.default.temporaryDirectory.appendingPathComponent( "output.xlsx" ) )
     }
 
     func testWriteReadRoundTrip() throws {
